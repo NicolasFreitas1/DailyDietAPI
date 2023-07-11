@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { knex } from "../database";
 import { randomUUID } from "node:crypto";
-import { checkUserIdExists } from "../middlewares/check-user-id-exists";
+import { checkUserIdExists } from "../middlewares";
 // import { checkSessionIdExists } from "../middlewares/check-session-id-exists";
 
 export async function mealsRoutes(app: FastifyInstance) {
@@ -34,4 +34,60 @@ export async function mealsRoutes(app: FastifyInstance) {
       return reply.status(201).send();
     }
   );
+  
+  app.patch(
+    "/:meal_id",
+    {
+      preHandler: [checkUserIdExists],
+    },
+    async (request, reply) => {
+      const updateMealsSchema = z.object({
+        meal_name: z.string().optional(),
+        meal_description: z.string().optional(),
+        is_inside: z.boolean().optional(),
+      });
+
+      const getTransactionParamsSchema = z.object({
+        meal_id: z.string().uuid(),
+      });
+
+      const { meal_id } = getTransactionParamsSchema.parse(request.params);
+
+      const { meal_name, meal_description, is_inside } =
+        updateMealsSchema.parse(request.body);
+
+      const { user_id } = request.cookies;
+      const userIdFromMeal = await knex("meals")
+        .select("user_id")
+        .where("meal_id", meal_id)
+        .first();
+
+      if (userIdFromMeal?.user_id !== user_id)
+        return reply.status(401).send({ error: "Unauthorized" });
+
+      await knex("meals")
+        .where("meal_id", meal_id)
+        .update({ meal_name, meal_description, is_inside });
+    }
+  );
+
+  app.delete("/:meal_id", async (request, reply) => {
+    const getTransactionParamsSchema = z.object({
+      meal_id: z.string().uuid(),
+    });
+
+    const { meal_id } = getTransactionParamsSchema.parse(request.params);
+
+    const { user_id } = request.cookies;
+
+    const userIdFromMeal = await knex("meals")
+      .select("user_id")
+      .where("meal_id", meal_id)
+      .first();
+
+    if (userIdFromMeal?.user_id !== user_id)
+      return reply.status(401).send({ error: "Unauthorized" });
+
+    await knex("meals").where("meal_id", meal_id).del();
+  });
 }
