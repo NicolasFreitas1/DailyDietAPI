@@ -3,6 +3,7 @@ import { z } from "zod";
 import { knex } from "../database";
 import { randomUUID } from "node:crypto";
 import { checkUserIdExists } from "../middlewares";
+import { calcBestSequenceDiet } from "../utils/calcBestSequenceDiet";
 // import { checkSessionIdExists } from "../middlewares/check-session-id-exists";
 
 export async function mealsRoutes(app: FastifyInstance) {
@@ -39,6 +40,44 @@ export async function mealsRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: "Unauthorized" });
 
       return reply.status(200).send({ meal });
+    }
+  );
+  app.get(
+    "/metrics",
+    {
+      preHandler: [checkUserIdExists],
+    },
+    async (request, reply) => {
+      const { user_id } = request.cookies;
+
+      const totalMeals = await knex("meals")
+        .count("*", { as: "total" })
+        .where("user_id", user_id)
+        .first();
+
+      const insideDietMeals = await knex("meals")
+        .count("*", { as: "total" })
+        .where({ user_id, is_inside: true })
+        .first();
+
+      const outOffDietMeals = await knex("meals")
+        .count("*", { as: "total" })
+        .where({ user_id, is_inside: false })
+        .first();
+
+      const meals = await knex
+        .table("meals")
+        .where("user_id", user_id)
+        .select("*");
+
+      console.log(calcBestSequenceDiet(meals));
+
+      return reply.status(200).send({
+        totalMeals: totalMeals?.total,
+        insideDietMeals: insideDietMeals?.total,
+        outOffDietMeals: outOffDietMeals?.total,
+        // sequenceInsideDietMeal: sequenceInsideDietMeal?.total,
+      });
     }
   );
   app.post(
